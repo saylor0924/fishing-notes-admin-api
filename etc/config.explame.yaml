@@ -1,0 +1,13 @@
+Name: admin-api
+Host: 0.0.0.0
+Port: 2002
+Database:
+  Driver: "mysql"
+  DSN: "<user>:<password>@tcp(127.0.0.1:3306)/fishing-notes-api?parseTime=true&multiStatements=true&charset=utf8mb4"
+  MaxOpenConn: 100
+  MaxIdleConn: 80
+Auth:
+  AccessSecret: "replace-with-a-long-random-secret"
+  AccessExpire: 7200
+Permission:
+  SyncOnStartup: false

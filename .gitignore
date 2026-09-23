@@ -1,0 +1,10 @@
+# 本地服务配置可能包含数据库凭据和 JWT 密钥。
+etc/config.yaml
+
+# IDE 与系统生成文件。
+.idea/
+.DS_Store
+**/.DS_Store
+
+# 本地构建产物。
+/tmp/main

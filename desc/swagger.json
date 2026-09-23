@@ -1,0 +1,2869 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fishing Notes Admin API",
+    "version": "0.2.1",
+    "description": "管理后台 API 文档，覆盖认证、RBAC、管理员用户、钓点审核、知识专栏、鱼种内容与业务用户管理。\n\n使用说明：\n1. 除登录接口外，其余接口默认都需要 Bearer Token。\n2. 所有成功响应统一为 `{ code, message, data }`，其中 `code = 0` 表示成功。\n3. 列表接口统一支持 `page` 和 `pageSize`，默认 `page=1`、`pageSize=20`。\n"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:1002",
+      "description": "Local API Server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth",
+      "description": "登录、当前管理员、菜单与权限信息"
+    },
+    {
+      "name": "RBAC",
+      "description": "角色与权限查询接口"
+    },
+    {
+      "name": "Admin Users",
+      "description": "后台管理员账号管理接口"
+    },
+    {
+      "name": "Spot Reviews",
+      "description": "钓点审核、查看详情、审核通过与驳回"
+    },
+    {
+      "name": "Articles",
+      "description": "知识专栏列表、编辑、发布与下线"
+    },
+    {
+      "name": "Species",
+      "description": "常见目标鱼内容编辑、展示状态与细节建议管理"
+    },
+    {
+      "name": "Users",
+      "description": "业务用户列表、详情与状态管理"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": [
+
+      ]
+    }
+  ],
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "管理员登录",
+        "operationId": "login",
+        "security": [
+
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              },
+              "example": {
+                "username": "admin",
+                "password": "123456"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "获取当前登录管理员信息",
+        "operationId": "getCurrentUser",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/permissions": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "获取当前登录管理员权限码",
+        "operationId": "getPermissionCodes",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionCodesEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/menus": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "获取当前登录管理员菜单树",
+        "operationId": "getMenus",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenusEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/rbac/roles": {
+      "get": {
+        "tags": [
+          "RBAC"
+        ],
+        "summary": "获取角色列表",
+        "operationId": "listRoles",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListRolesEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/rbac/permissions": {
+      "get": {
+        "tags": [
+          "RBAC"
+        ],
+        "summary": "获取权限列表",
+        "operationId": "listPermissions",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPermissionsEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/rbac/users/{userId}/roles": {
+      "get": {
+        "tags": [
+          "RBAC"
+        ],
+        "summary": "获取指定管理员角色",
+        "operationId": "getUserRoles",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRolesEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "tags": [
+          "Admin Users"
+        ],
+        "summary": "获取管理员用户列表",
+        "operationId": "listAdminUsers",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "description": "按用户名模糊查询",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nickname",
+            "in": "query",
+            "description": "按昵称模糊查询",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "用户状态，字符串形式传入，例如 1 或 0",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAdminUsersEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/spots/reviews": {
+      "get": {
+        "tags": [
+          "Spot Reviews"
+        ],
+        "summary": "获取钓点审核列表",
+        "operationId": "listFishingSpotReviews",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按钓点名称、业务编码、地址模糊查询",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceType",
+            "in": "query",
+            "description": "数据来源，例如 user、system、official",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "visibleStatus",
+            "in": "query",
+            "description": "可见状态，字符串形式传入，例如 0、1、2",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "publishStatus",
+            "in": "query",
+            "description": "发布状态，字符串形式传入，例如 0、1、2",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListFishingSpotReviewsEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/spots/reviews/{spotId}": {
+      "get": {
+        "tags": [
+          "Spot Reviews"
+        ],
+        "summary": "获取钓点审核详情",
+        "operationId": "getFishingSpotReviewDetail",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SpotIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FishingSpotReviewEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/spots/reviews/{spotId}/approve": {
+      "post": {
+        "tags": [
+          "Spot Reviews"
+        ],
+        "summary": "审核通过钓点",
+        "operationId": "approveFishingSpot",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SpotIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveFishingSpotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/spots/reviews/{spotId}/reject": {
+      "post": {
+        "tags": [
+          "Spot Reviews"
+        ],
+        "summary": "驳回钓点审核",
+        "operationId": "rejectFishingSpot",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SpotIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectFishingSpotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/articles": {
+      "get": {
+        "tags": [
+          "Articles"
+        ],
+        "summary": "获取知识专栏列表",
+        "operationId": "listArticles",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按标题、业务编码、摘要模糊查询",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "publishStatus",
+            "in": "query",
+            "description": "发布状态，字符串形式传入，例如 0、1、2",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "visibleStatus",
+            "in": "query",
+            "description": "可见状态，字符串形式传入，例如 0、1",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListArticlesEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Articles"
+        ],
+        "summary": "新建知识专栏",
+        "operationId": "createArticle",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArticleUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/articles/{articleId}": {
+      "get": {
+        "tags": [
+          "Articles"
+        ],
+        "summary": "获取知识专栏详情",
+        "operationId": "getArticleDetail",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ArticleIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Articles"
+        ],
+        "summary": "更新知识专栏",
+        "operationId": "updateArticle",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ArticleIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArticleUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/articles/{articleId}/publish": {
+      "post": {
+        "tags": [
+          "Articles"
+        ],
+        "summary": "发布知识专栏",
+        "operationId": "publishArticle",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ArticleIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArticlePublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/articles/{articleId}/offline": {
+      "post": {
+        "tags": [
+          "Articles"
+        ],
+        "summary": "下线知识专栏",
+        "operationId": "offlineArticle",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ArticleIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/species": {
+      "get": {
+        "tags": [
+          "Species"
+        ],
+        "summary": "获取鱼种列表",
+        "operationId": "listSpecies",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按鱼种名称、业务编码、别名模糊查询",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "分类，例如 freshwater、bottom、predator",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "visibleStatus",
+            "in": "query",
+            "description": "可见状态，字符串形式传入，例如 0、1",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "isFeatured",
+            "in": "query",
+            "description": "是否推荐，字符串形式传入，例如 0、1",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSpeciesEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Species"
+        ],
+        "summary": "新建鱼种内容",
+        "operationId": "createSpecies",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeciesUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeciesEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/species/{speciesId}": {
+      "get": {
+        "tags": [
+          "Species"
+        ],
+        "summary": "获取鱼种详情",
+        "operationId": "getSpeciesDetail",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SpeciesIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeciesEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Species"
+        ],
+        "summary": "更新鱼种内容",
+        "operationId": "updateSpecies",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SpeciesIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeciesUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeciesEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/species/{speciesId}/visibility": {
+      "post": {
+        "tags": [
+          "Species"
+        ],
+        "summary": "更新鱼种可见状态",
+        "operationId": "updateSpeciesVisibility",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SpeciesIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSpeciesVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "获取业务用户列表",
+        "operationId": "listUsers",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按用户昵称或用户 ID 模糊查询",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "用户状态，字符串形式传入，例如 0、1",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "description": "所在城市精确筛选",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListUsersEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "获取业务用户详情",
+        "operationId": "getUserDetail",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/status": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "更新业务用户状态",
+        "operationId": "updateUserStatus",
+        "security": [
+          {
+            "bearerAuth": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "description": "页码，默认 1",
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "default": 1
+        }
+      },
+      "PageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "description": "每页数量，默认 20，最大 100",
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "default": 20,
+          "maximum": 100
+        }
+      },
+      "UserIdPath": {
+        "name": "userId",
+        "in": "path",
+        "required": true,
+        "description": "用户 ID",
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "SpotIdPath": {
+        "name": "spotId",
+        "in": "path",
+        "required": true,
+        "description": "钓点 ID",
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "ArticleIdPath": {
+        "name": "articleId",
+        "in": "path",
+        "required": true,
+        "description": "专栏 ID",
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "SpeciesIdPath": {
+        "name": "speciesId",
+        "in": "path",
+        "required": true,
+        "description": "鱼种 ID",
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "请求参数错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "未认证或认证失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "没有权限访问",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "资源不存在",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "服务端异常",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "username": "admin",
+          "password": "123456"
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "tokenType": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user": {
+            "$ref": "#/components/schemas/CurrentUser"
+          }
+        }
+      },
+      "CurrentUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "isSuper": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleItem"
+            }
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PermissionCodesResponse": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MenusResponse": {
+        "type": "object",
+        "properties": {
+          "menus": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          }
+        }
+      },
+      "RoleItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sort": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "permissionCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PermissionItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "parentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sort": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "MenuItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "parentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          }
+        }
+      },
+      "ListRolesResponse": {
+        "type": "object",
+        "properties": {
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleItem"
+            }
+          }
+        }
+      },
+      "ListPermissionsResponse": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionItem"
+            }
+          }
+        }
+      },
+      "UserRolesResponse": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleItem"
+            }
+          }
+        }
+      },
+      "AdminUserItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "isSuper": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleItem"
+            }
+          }
+        }
+      },
+      "ListAdminUsersResponse": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUserItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FishingSpotReviewItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "spotCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "coverImageUrl": {
+            "type": "string"
+          },
+          "province": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "district": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "tagText": {
+            "type": "string"
+          },
+          "tagType": {
+            "type": "string"
+          },
+          "fishingIndex": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scene": {
+            "type": "string"
+          },
+          "sceneHint": {
+            "type": "string"
+          },
+          "sourceType": {
+            "type": "string"
+          },
+          "visibleStatus": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "publishStatus": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "publisherUserId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "publisherNickname": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "species": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ListFishingSpotReviewsResponse": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FishingSpotReviewItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApproveFishingSpotRequest": {
+        "type": "object",
+        "properties": {
+          "publishStatus": {
+            "type": "integer",
+            "format": "int64",
+            "description": "默认 1"
+          }
+        },
+        "example": {
+          "publishStatus": 1
+        }
+      },
+      "RejectFishingSpotRequest": {
+        "type": "object",
+        "properties": {
+          "publishStatus": {
+            "type": "integer",
+            "format": "int64",
+            "description": "默认 0"
+          }
+        },
+        "example": {
+          "publishStatus": 0
+        }
+      },
+      "ArticleUpsertRequest": {
+        "type": "object",
+        "required": [
+          "title",
+          "visibleStatus"
+        ],
+        "properties": {
+          "shortLabel": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "theme": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "visibleStatus": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "summaryLines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "takeawayLines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "typeLabel": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "shortLabel": "技法",
+          "title": "春季野钓选位思路",
+          "description": "从水深、回湾和风向判断春季更稳的鱼道位置。",
+          "theme": "spring",
+          "sortOrder": 10,
+          "visibleStatus": 1,
+          "summaryLines": [
+            "早春优先找浅滩连深水的位置",
+            "阴天比大晴天更适合贴边搜索"
+          ],
+          "takeawayLines": [
+            "回湾和洄水区更容易留鱼",
+            "有障碍和草边时优先找结构变化"
+          ],
+          "typeLabel": "选位技巧"
+        }
+      },
+      "ArticlePublishRequest": {
+        "type": "object",
+        "properties": {
+          "visibleStatus": {
+            "type": "integer",
+            "format": "int64",
+            "description": "默认 1"
+          }
+        },
+        "example": {
+          "visibleStatus": 1
+        }
+      },
+      "ArticleItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "articleCode": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "theme": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "publishStatus": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "visibleStatus": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "publishedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "typeLabel": {
+            "type": "string"
+          },
+          "summaryLines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "takeawayLines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ListArticlesResponse": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SpeciesUpsertRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "visibleStatus",
+          "isFeatured"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "waterLayer": {
+            "type": "string"
+          },
+          "tagText": {
+            "type": "string"
+          },
+          "seasonText": {
+            "type": "string"
+          },
+          "bestWindow": {
+            "type": "string"
+          },
+          "fishingMethod": {
+            "type": "string"
+          },
+          "baitText": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "highlightText": {
+            "type": "string"
+          },
+          "isFeatured": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "visibleStatus": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "detailTips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "name": "鲫鱼",
+          "alias": "小体型耐口鱼",
+          "category": "freshwater",
+          "waterLayer": "中下层",
+          "tagText": "常见目标鱼",
+          "seasonText": "四季可钓，春秋更稳",
+          "bestWindow": "清晨和傍晚",
+          "fishingMethod": "台钓、传统钓",
+          "baitText": "酒米、蚯蚓、腥香商品饵",
+          "description": "分布广，摄食稳定，适合作为入门目标鱼。",
+          "highlightText": "温差大时尽量放慢节奏，优先守结构边。",
+          "isFeatured": 1,
+          "sortOrder": 1,
+          "visibleStatus": 1,
+          "detailTips": [
+            "有草洞和缓流的位置更容易聚鱼",
+            "连续抛投后没口时应及时调整深浅"
+          ]
+        }
+      },
+      "UpdateSpeciesVisibilityRequest": {
+        "type": "object",
+        "required": [
+          "visibleStatus"
+        ],
+        "properties": {
+          "visibleStatus": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        },
+        "example": {
+          "visibleStatus": 1
+        }
+      },
+      "SpeciesItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "speciesCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "waterLayer": {
+            "type": "string"
+          },
+          "tagText": {
+            "type": "string"
+          },
+          "seasonText": {
+            "type": "string"
+          },
+          "bestWindow": {
+            "type": "string"
+          },
+          "fishingMethod": {
+            "type": "string"
+          },
+          "baitText": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "highlightText": {
+            "type": "string"
+          },
+          "isFeatured": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "visibleStatus": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "detailTips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ListSpeciesResponse": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpeciesItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "UpdateUserStatusRequest": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        },
+        "example": {
+          "status": 1
+        }
+      },
+      "UserItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "levelText": {
+            "type": "string"
+          },
+          "profileDesc": {
+            "type": "string"
+          },
+          "locationText": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "district": {
+            "type": "string"
+          },
+          "streakWeeks": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "preferredSpeciesText": {
+            "type": "string"
+          }
+        }
+      },
+      "ListUsersResponse": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SuccessData": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "example": {
+          "success": true
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "example": {
+          "code": 10000,
+          "message": "invalid request"
+        }
+      },
+      "LoginResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LoginResponse"
+          }
+        },
+        "example": {
+          "code": 0,
+          "message": "ok",
+          "data": {
+            "accessToken": "<jwt-token>",
+            "tokenType": "Bearer",
+            "expiresAt": 1770000000,
+            "user": {
+              "id": 1,
+              "username": "admin",
+              "nickname": "系统管理员",
+              "isSuper": true,
+              "status": 1,
+              "lastLoginAt": "2026-04-09 11:30:00",
+              "roles": [
+
+              ],
+              "permissions": [
+                "rbac.role.read",
+                "rbac.permission.read"
+              ]
+            }
+          }
+        }
+      },
+      "CurrentUserEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CurrentUser"
+          }
+        }
+      },
+      "PermissionCodesEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PermissionCodesResponse"
+          }
+        }
+      },
+      "MenusEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MenusResponse"
+          }
+        }
+      },
+      "ListRolesEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListRolesResponse"
+          }
+        }
+      },
+      "ListPermissionsEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListPermissionsResponse"
+          }
+        }
+      },
+      "UserRolesEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserRolesResponse"
+          }
+        }
+      },
+      "ListAdminUsersEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListAdminUsersResponse"
+          }
+        }
+      },
+      "FishingSpotReviewEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/FishingSpotReviewItem"
+          }
+        }
+      },
+      "ListFishingSpotReviewsEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListFishingSpotReviewsResponse"
+          }
+        },
+        "example": {
+          "code": 0,
+          "message": "ok",
+          "data": {
+            "list": [
+              {
+                "id": 1,
+                "spotCode": "spot_seed_001",
+                "name": "淀山湖黄金钓位",
+                "coverImageUrl": "https://example.com/spot.jpg",
+                "province": "上海",
+                "city": "上海",
+                "district": "青浦区",
+                "address": "淀山湖东岸试钓区",
+                "latitude": 31.1032,
+                "longitude": 120.9786,
+                "tagText": "免费野钓",
+                "tagType": "free",
+                "fishingIndex": 4,
+                "scene": "浅滩回湾",
+                "sceneHint": "芦苇边有鱼星",
+                "sourceType": "official",
+                "visibleStatus": 1,
+                "publishStatus": 1,
+                "publisherUserId": 1,
+                "publisherNickname": "官方推荐",
+                "publishedAt": "2026-04-04 22:42:21",
+                "createdAt": "2026-04-04 22:42:21",
+                "updatedAt": "2026-04-04 22:42:21",
+                "species": [
+                  "鲫鱼",
+                  "鲤鱼"
+                ],
+                "tips": [
+                  "早晚窗口更稳"
+                ]
+              }
+            ],
+            "total": 1,
+            "page": 1,
+            "pageSize": 20
+          }
+        }
+      },
+      "ArticleEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ArticleItem"
+          }
+        },
+        "example": {
+          "code": 0,
+          "message": "ok",
+          "data": {
+            "id": 1,
+            "articleCode": "article_1770000000000",
+            "shortLabel": "技法",
+            "title": "春季野钓选位思路",
+            "description": "从水深、回湾和风向判断春季更稳的鱼道位置。",
+            "theme": "spring",
+            "sortOrder": 10,
+            "publishStatus": 1,
+            "visibleStatus": 1,
+            "publishedAt": "2026-04-09 11:20:00",
+            "createdAt": "2026-04-09 11:10:00",
+            "updatedAt": "2026-04-09 11:20:00",
+            "typeLabel": "选位技巧",
+            "summaryLines": [
+              "早春优先找浅滩连深水的位置"
+            ],
+            "takeawayLines": [
+              "回湾和洄水区更容易留鱼"
+            ]
+          }
+        }
+      },
+      "ListArticlesEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListArticlesResponse"
+          }
+        }
+      },
+      "SpeciesEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SpeciesItem"
+          }
+        },
+        "example": {
+          "code": 0,
+          "message": "ok",
+          "data": {
+            "id": 1,
+            "speciesCode": "species_1770000000000",
+            "name": "鲫鱼",
+            "alias": "小体型耐口鱼",
+            "category": "freshwater",
+            "waterLayer": "中下层",
+            "tagText": "常见目标鱼",
+            "seasonText": "四季可钓，春秋更稳",
+            "bestWindow": "清晨和傍晚",
+            "fishingMethod": "台钓、传统钓",
+            "baitText": "酒米、蚯蚓、腥香商品饵",
+            "description": "分布广，摄食稳定，适合作为入门目标鱼。",
+            "highlightText": "温差大时尽量放慢节奏，优先守结构边。",
+            "isFeatured": 1,
+            "sortOrder": 1,
+            "visibleStatus": 1,
+            "createdAt": "2026-04-09 11:00:00",
+            "updatedAt": "2026-04-09 11:20:00",
+            "detailTips": [
+              "有草洞和缓流的位置更容易聚鱼"
+            ]
+          }
+        }
+      },
+      "ListSpeciesEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListSpeciesResponse"
+          }
+        }
+      },
+      "UserEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserItem"
+          }
+        },
+        "example": {
+          "code": 0,
+          "message": "ok",
+          "data": {
+            "id": 1,
+            "nickname": "官方推荐",
+            "avatarUrl": "https://example.com/avatar.jpg",
+            "status": 1,
+            "lastLoginAt": "2026-04-04 22:42:21",
+            "createdAt": "2026-04-04 22:42:21",
+            "updatedAt": "2026-04-09 10:30:00",
+            "levelText": "Lv.6进阶钓手",
+            "profileDesc": "喜欢在湖库和大水面做钓。",
+            "locationText": "上海青浦，连续记录 6 周",
+            "city": "上海",
+            "district": "青浦区",
+            "streakWeeks": 6,
+            "preferredSpeciesText": "鲫鱼、鲤鱼、翘嘴"
+          }
+        }
+      },
+      "ListUsersEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListUsersResponse"
+          }
+        }
+      },
+      "SuccessEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "message": {
+            "type": "string",
+            "example": "ok"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SuccessData"
+          }
+        },
+        "example": {
+          "code": 0,
+          "message": "ok",
+          "data": {
+            "success": true
+          }
+        }
+      }
+    }
+  }
+}
