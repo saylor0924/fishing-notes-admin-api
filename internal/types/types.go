@@ -80,9 +80,45 @@ type UserRolesRequest struct {
 	UserID int64 `path:"userId"`
 }
 
+type UpdateUserRolesRequest struct {
+	UserID  int64   `path:"userId"`  // 待修改角色的管理员 ID
+	RoleIDs []int64 `json:"roleIds"` // 绑定的启用角色 ID 列表
+}
+
 type UserRolesResponse struct {
 	UserID int64      `json:"userId"`
 	Roles  []RoleItem `json:"roles"`
+}
+
+type UpdateRolePermissionsRequest struct {
+	RoleID        int64   `path:"roleId"`        // 待修改权限的角色 ID
+	PermissionIDs []int64 `json:"permissionIds"` // 绑定的启用权限 ID 列表
+}
+
+type RolePermissionsResponse struct {
+	RoleID        int64   `json:"roleId"`
+	PermissionIDs []int64 `json:"permissionIds"`
+}
+
+type RolePathRequest struct {
+	RoleID int64 `path:"roleId"` // 待操作的角色 ID
+}
+
+type CreateRoleRequest struct {
+	Code          string  `json:"code"`          // 角色编码
+	Name          string  `json:"name"`          // 角色名称
+	Description   string  `json:"description"`   // 角色说明
+	Status        int64   `json:"status"`        // 角色状态，1 启用，0 停用
+	Sort          int64   `json:"sort"`          // 角色排序值
+	PermissionIDs []int64 `json:"permissionIds"` // 创建后绑定的启用权限 ID 列表
+}
+
+type UpdateRoleRequest struct {
+	RoleID      int64  `path:"roleId"`      // 待修改的角色 ID
+	Name        string `json:"name"`        // 角色名称
+	Description string `json:"description"` // 角色说明
+	Status      int64  `json:"status"`      // 角色状态，1 启用，0 停用
+	Sort        int64  `json:"sort"`        // 角色排序值
 }
 
 type ListAdminUsersRequest struct {
@@ -108,4 +144,26 @@ type ListAdminUsersResponse struct {
 	Total    int64           `json:"total"`
 	Page     int64           `json:"page"`
 	PageSize int64           `json:"pageSize"`
+}
+
+type CreateAdminUserRequest struct {
+	Username string  `json:"username"` // 管理员登录用户名
+	Password string  `json:"password"` // 管理员初始密码
+	Nickname string  `json:"nickname"` // 管理员显示名称
+	RoleIDs  []int64 `json:"roleIds"`  // 创建后绑定的启用角色 ID 列表
+}
+
+type AdminUserPathRequest struct {
+	UserID int64 `path:"userId"` // 待操作的管理员 ID
+}
+
+type UpdateAdminUserRequest struct {
+	UserID   int64  `path:"userId"`   // 待修改的管理员 ID
+	Nickname string `json:"nickname"` // 管理员显示名称
+	Status   int64  `json:"status"`   // 管理员状态，1 启用，0 停用
+}
+
+type ResetAdminPasswordRequest struct {
+	UserID   int64  `path:"userId"`   // 待重置密码的管理员 ID
+	Password string `json:"password"` // 新密码
 }

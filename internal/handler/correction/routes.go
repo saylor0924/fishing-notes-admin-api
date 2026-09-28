@@ -15,9 +15,26 @@ import (
 func RegisterRoutes(server *rest.Server, svcCtx *svc.ServiceContext) {
 	handlerx.AddPermissionRoutes(server, svcCtx, []handlerx.PermissionRoute{
 		{PermissionCode: "spot.correction.read", Route: rest.Route{Method: http.MethodGet, Path: "/spot-corrections", Handler: listHandler(svcCtx)}},
+		{PermissionCode: "spot.correction.read", Route: rest.Route{Method: http.MethodGet, Path: "/spot-corrections/:correctionId", Handler: detailHandler(svcCtx)}},
 		{PermissionCode: "spot.correction.review", Route: rest.Route{Method: http.MethodPost, Path: "/spot-corrections/:correctionId/approve", Handler: reviewHandler(svcCtx, "approved")}},
 		{PermissionCode: "spot.correction.review", Route: rest.Route{Method: http.MethodPost, Path: "/spot-corrections/:correctionId/reject", Handler: reviewHandler(svcCtx, "rejected")}},
 	})
+}
+
+func detailHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var pathReq types.SpotCorrectionPathRequest
+		if err := httpx.ParsePath(r, &pathReq); err != nil {
+			httpx.ErrorCtx(r.Context(), w, errorsx.BadRequest("invalid spot correction id"))
+			return
+		}
+		resp, err := svcCtx.BusinessService.GetSpotCorrection(r.Context(), pathReq.CorrectionID)
+		if err != nil {
+			httpx.ErrorCtx(r.Context(), w, err)
+			return
+		}
+		httpx.OkJsonCtx(r.Context(), w, resp)
+	}
 }
 
 func listHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {

@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"fishing-notes-admin-api/internal/assembler"
+	"fishing-notes-admin-api/internal/audit"
 	authpkg "fishing-notes-admin-api/internal/auth"
 	"fishing-notes-admin-api/internal/config"
 	"fishing-notes-admin-api/internal/errorsx"
@@ -19,12 +21,18 @@ import (
 
 type AdminService struct {
 	repo   *repository.AdminRepository
+	audit  *repository.AuditRepository
 	config config.AuthConf
 }
 
-func NewAdminService(repo *repository.AdminRepository, cfg config.AuthConf) *AdminService {
+func NewAdminService(repo *repository.AdminRepository, cfg config.AuthConf, auditRepos ...*repository.AuditRepository) *AdminService {
+	var auditRepo *repository.AuditRepository
+	if len(auditRepos) > 0 {
+		auditRepo = auditRepos[0]
+	}
 	return &AdminService{
 		repo:   repo,
+		audit:  auditRepo,
 		config: cfg,
 	}
 }
@@ -144,6 +152,108 @@ func (s *AdminService) ListPermissions(ctx context.Context) (*types.ListPermissi
 	}, nil
 }
 
+func (s *AdminService) CreateRole(ctx context.Context, req *types.CreateRoleRequest) (*types.RoleItem, error) {
+	code := strings.TrimSpace(req.Code)
+	name := strings.TrimSpace(req.Name)
+	if err := validateRoleCode(code); err != nil {
+		return nil, errorsx.BadRequest("invalid role code")
+	}
+	if name == "" || len(name) > 64 || len(req.Description) > 255 || req.Status < 0 || req.Status > 1 || req.Sort < 0 {
+		return nil, errorsx.BadRequest("invalid role")
+	}
+	if err := validateIDs(req.PermissionIDs); err != nil {
+		return nil, errorsx.BadRequest("invalid permission ids")
+	}
+	if _, err := s.repo.FindRoleByCode(ctx, code); err == nil {
+		return nil, errorsx.BadRequest("role code already exists")
+	} else if !errors.Is(err, sqlx.ErrNotFound) {
+		return nil, errorsx.Internal("failed to query role")
+	}
+	permissionCount, err := s.repo.CountActivePermissions(ctx, req.PermissionIDs)
+	if err != nil {
+		return nil, errorsx.Internal("failed to query permissions")
+	}
+	if permissionCount != int64(len(req.PermissionIDs)) {
+		return nil, errorsx.BadRequest("one or more permissions are invalid")
+	}
+	role, err := s.repo.CreateRole(ctx, code, name, strings.TrimSpace(req.Description), req.Status, req.Sort, req.PermissionIDs)
+	if err != nil {
+		return nil, errorsx.Internal("failed to create role")
+	}
+	if err := s.writeAudit(ctx, audit.Event{Action: "rbac.role.create", ResourceType: "role", ResourceID: role.ID, Detail: map[string]any{"code": role.Code, "name": role.Name}}); err != nil {
+		return nil, errorsx.Internal("failed to write audit log")
+	}
+	codes, err := s.repo.ListPermissionCodesByRoleID(ctx, role.ID)
+	if err != nil {
+		return nil, errorsx.Internal("failed to query role permissions")
+	}
+	return &types.RoleItem{
+		ID: role.ID, Code: role.Code, Name: role.Name, Description: role.Description,
+		Status: role.Status, Sort: role.Sort, PermissionCodes: codes,
+	}, nil
+}
+
+func (s *AdminService) UpdateRole(ctx context.Context, req *types.UpdateRoleRequest) (*types.RoleItem, error) {
+	if req.RoleID <= 0 || strings.TrimSpace(req.Name) == "" || len(strings.TrimSpace(req.Name)) > 64 || len(req.Description) > 255 || req.Status < 0 || req.Status > 1 || req.Sort < 0 {
+		return nil, errorsx.BadRequest("invalid role")
+	}
+	role, err := s.repo.FindRoleByID(ctx, req.RoleID)
+	if err != nil {
+		if errors.Is(err, sqlx.ErrNotFound) {
+			return nil, errorsx.NotFound("role not found")
+		}
+		return nil, errorsx.Internal("failed to query role")
+	}
+	if err := s.repo.UpdateRole(ctx, req.RoleID, strings.TrimSpace(req.Name), strings.TrimSpace(req.Description), req.Status, req.Sort); err != nil {
+		return nil, errorsx.Internal("failed to update role")
+	}
+	if err := s.writeAudit(ctx, audit.Event{Action: "rbac.role.update", ResourceType: "role", ResourceID: req.RoleID, Detail: map[string]any{"name": strings.TrimSpace(req.Name), "status": req.Status, "sort": req.Sort}}); err != nil {
+		return nil, errorsx.Internal("failed to write audit log")
+	}
+	role.Name = strings.TrimSpace(req.Name)
+	role.Description = strings.TrimSpace(req.Description)
+	role.Status = req.Status
+	role.Sort = req.Sort
+	codes, err := s.repo.ListPermissionCodesByRoleID(ctx, role.ID)
+	if err != nil {
+		return nil, errorsx.Internal("failed to query role permissions")
+	}
+	return &types.RoleItem{
+		ID: role.ID, Code: role.Code, Name: role.Name, Description: role.Description,
+		Status: role.Status, Sort: role.Sort, PermissionCodes: codes,
+	}, nil
+}
+
+func (s *AdminService) DeleteRole(ctx context.Context, req *types.RolePathRequest) error {
+	if req.RoleID <= 0 {
+		return errorsx.BadRequest("invalid role id")
+	}
+	role, err := s.repo.FindRoleByID(ctx, req.RoleID)
+	if err != nil {
+		if errors.Is(err, sqlx.ErrNotFound) {
+			return errorsx.NotFound("role not found")
+		}
+		return errorsx.Internal("failed to query role")
+	}
+	if role.Code == "super_admin" {
+		return errorsx.BadRequest("super admin role cannot be deleted")
+	}
+	users, err := s.repo.CountUsersByRoleID(ctx, req.RoleID)
+	if err != nil {
+		return errorsx.Internal("failed to query role users")
+	}
+	if users > 0 {
+		return errorsx.BadRequest("role is still assigned to administrators")
+	}
+	if err := s.repo.DeleteRole(ctx, req.RoleID); err != nil {
+		return errorsx.Internal("failed to delete role")
+	}
+	if err := s.writeAudit(ctx, audit.Event{Action: "rbac.role.delete", ResourceType: "role", ResourceID: req.RoleID, Detail: map[string]any{"code": role.Code}}); err != nil {
+		return errorsx.Internal("failed to write audit log")
+	}
+	return nil
+}
+
 func (s *AdminService) UserRoles(ctx context.Context, req *types.UserRolesRequest) (*types.UserRolesResponse, error) {
 	_, err := s.repo.FindUserByID(ctx, req.UserID)
 	if err != nil {
@@ -162,6 +272,78 @@ func (s *AdminService) UserRoles(ctx context.Context, req *types.UserRolesReques
 		UserID: req.UserID,
 		Roles:  assembler.Roles(roles, nil),
 	}, nil
+}
+
+func (s *AdminService) UpdateUserRoles(ctx context.Context, req *types.UpdateUserRolesRequest) (*types.UserRolesResponse, error) {
+	if req.UserID <= 0 {
+		return nil, errorsx.BadRequest("invalid user id")
+	}
+
+	if err := validateIDs(req.RoleIDs); err != nil {
+		return nil, errorsx.BadRequest("invalid role ids")
+	}
+
+	if _, err := s.repo.FindUserByID(ctx, req.UserID); err != nil {
+		if errors.Is(err, sqlx.ErrNotFound) {
+			return nil, errorsx.NotFound("user not found")
+		}
+		return nil, errorsx.Internal("failed to query user")
+	}
+
+	roleCount, err := s.repo.CountActiveRoles(ctx, req.RoleIDs)
+	if err != nil {
+		return nil, errorsx.Internal("failed to query roles")
+	}
+	if roleCount != int64(len(req.RoleIDs)) {
+		return nil, errorsx.BadRequest("one or more roles are invalid")
+	}
+
+	if err := s.repo.ReplaceUserRoles(ctx, req.UserID, req.RoleIDs); err != nil {
+		return nil, errorsx.Internal("failed to update user roles")
+	}
+	if err := s.writeAudit(ctx, audit.Event{Action: "admin.user.roles.update", ResourceType: "admin_user", ResourceID: req.UserID, Detail: map[string]any{"roleIds": req.RoleIDs}}); err != nil {
+		return nil, errorsx.Internal("failed to write audit log")
+	}
+
+	return s.UserRoles(ctx, &types.UserRolesRequest{UserID: req.UserID})
+}
+
+func (s *AdminService) UpdateRolePermissions(ctx context.Context, req *types.UpdateRolePermissionsRequest) (*types.RolePermissionsResponse, error) {
+	if req.RoleID <= 0 {
+		return nil, errorsx.BadRequest("invalid role id")
+	}
+
+	if err := validateIDs(req.PermissionIDs); err != nil {
+		return nil, errorsx.BadRequest("invalid permission ids")
+	}
+
+	role, err := s.repo.FindRoleByID(ctx, req.RoleID)
+	if err != nil {
+		if errors.Is(err, sqlx.ErrNotFound) {
+			return nil, errorsx.NotFound("role not found")
+		}
+		return nil, errorsx.Internal("failed to query role")
+	}
+	if role.Status != 1 {
+		return nil, errorsx.BadRequest("role is disabled")
+	}
+
+	permissionCount, err := s.repo.CountActivePermissions(ctx, req.PermissionIDs)
+	if err != nil {
+		return nil, errorsx.Internal("failed to query permissions")
+	}
+	if permissionCount != int64(len(req.PermissionIDs)) {
+		return nil, errorsx.BadRequest("one or more permissions are invalid")
+	}
+
+	if err := s.repo.ReplaceRolePermissions(ctx, req.RoleID, req.PermissionIDs); err != nil {
+		return nil, errorsx.Internal("failed to update role permissions")
+	}
+	if err := s.writeAudit(ctx, audit.Event{Action: "rbac.role.permissions.update", ResourceType: "role", ResourceID: req.RoleID, Detail: map[string]any{"permissionIds": req.PermissionIDs}}); err != nil {
+		return nil, errorsx.Internal("failed to write audit log")
+	}
+
+	return &types.RolePermissionsResponse{RoleID: req.RoleID, PermissionIDs: req.PermissionIDs}, nil
 }
 
 func (s *AdminService) ListUsers(ctx context.Context, req *types.ListAdminUsersRequest) (*types.ListAdminUsersResponse, error) {
@@ -216,6 +398,103 @@ func (s *AdminService) ListUsers(ctx context.Context, req *types.ListAdminUsersR
 	}, nil
 }
 
+func (s *AdminService) CreateAdminUser(ctx context.Context, req *types.CreateAdminUserRequest) (*types.AdminUserItem, error) {
+	username := strings.TrimSpace(req.Username)
+	nickname := strings.TrimSpace(req.Nickname)
+	if username == "" || len(username) > 64 {
+		return nil, errorsx.BadRequest("invalid username")
+	}
+	if err := validatePassword(req.Password); err != nil {
+		return nil, errorsx.BadRequest("invalid password")
+	}
+	if nickname == "" || len(nickname) > 64 {
+		return nil, errorsx.BadRequest("invalid nickname")
+	}
+	if err := validateIDs(req.RoleIDs); err != nil {
+		return nil, errorsx.BadRequest("invalid role ids")
+	}
+	if _, err := s.repo.FindUserByUsername(ctx, username); err == nil {
+		return nil, errorsx.BadRequest("username already exists")
+	} else if !errors.Is(err, sqlx.ErrNotFound) {
+		return nil, errorsx.Internal("failed to query user")
+	}
+	roleCount, err := s.repo.CountActiveRoles(ctx, req.RoleIDs)
+	if err != nil {
+		return nil, errorsx.Internal("failed to query roles")
+	}
+	if roleCount != int64(len(req.RoleIDs)) {
+		return nil, errorsx.BadRequest("one or more roles are invalid")
+	}
+	passwordHash, err := authpkg.HashPassword(req.Password)
+	if err != nil {
+		return nil, errorsx.Internal("failed to hash password")
+	}
+	user, err := s.repo.CreateAdminUser(ctx, username, passwordHash, nickname, req.RoleIDs)
+	if err != nil {
+		return nil, errorsx.Internal("failed to create admin user")
+	}
+	if err := s.writeAudit(ctx, audit.Event{Action: "admin.user.create", ResourceType: "admin_user", ResourceID: user.ID, Detail: map[string]any{"username": user.Username, "roleIds": req.RoleIDs}}); err != nil {
+		return nil, errorsx.Internal("failed to write audit log")
+	}
+	roles, err := s.repo.ListRolesByUserID(ctx, user.ID)
+	if err != nil {
+		return nil, errorsx.Internal("failed to query user roles")
+	}
+	return assembler.AdminUser(user, assembler.Roles(roles, nil)), nil
+}
+
+func (s *AdminService) UpdateAdminUser(ctx context.Context, req *types.UpdateAdminUserRequest) (*types.AdminUserItem, error) {
+	if req.UserID <= 0 || (req.Status != 0 && req.Status != 1) {
+		return nil, errorsx.BadRequest("invalid admin user")
+	}
+	nickname := strings.TrimSpace(req.Nickname)
+	if nickname == "" || len(nickname) > 64 {
+		return nil, errorsx.BadRequest("invalid nickname")
+	}
+	user, err := s.repo.FindUserByID(ctx, req.UserID)
+	if err != nil {
+		if errors.Is(err, sqlx.ErrNotFound) {
+			return nil, errorsx.NotFound("admin user not found")
+		}
+		return nil, errorsx.Internal("failed to query admin user")
+	}
+	if err := s.repo.UpdateAdminUser(ctx, req.UserID, nickname, req.Status); err != nil {
+		return nil, errorsx.Internal("failed to update admin user")
+	}
+	user.Nickname = nickname
+	user.Status = req.Status
+	if err := s.writeAudit(ctx, audit.Event{Action: "admin.user.update", ResourceType: "admin_user", ResourceID: req.UserID, Detail: map[string]any{"status": req.Status}}); err != nil {
+		return nil, errorsx.Internal("failed to write audit log")
+	}
+	return assembler.AdminUser(user, nil), nil
+}
+
+func (s *AdminService) ResetAdminPassword(ctx context.Context, req *types.ResetAdminPasswordRequest) error {
+	if req.UserID <= 0 {
+		return errorsx.BadRequest("invalid admin user id")
+	}
+	if err := validatePassword(req.Password); err != nil {
+		return errorsx.BadRequest("invalid password")
+	}
+	if _, err := s.repo.FindUserByID(ctx, req.UserID); err != nil {
+		if errors.Is(err, sqlx.ErrNotFound) {
+			return errorsx.NotFound("admin user not found")
+		}
+		return errorsx.Internal("failed to query admin user")
+	}
+	passwordHash, err := authpkg.HashPassword(req.Password)
+	if err != nil {
+		return errorsx.Internal("failed to hash password")
+	}
+	if err := s.repo.UpdateAdminPassword(ctx, req.UserID, passwordHash); err != nil {
+		return errorsx.Internal("failed to reset admin password")
+	}
+	if err := s.writeAudit(ctx, audit.Event{Action: "admin.user.password.update", ResourceType: "admin_user", ResourceID: req.UserID}); err != nil {
+		return errorsx.Internal("failed to write audit log")
+	}
+	return nil
+}
+
 func (s *AdminService) HasPermission(ctx context.Context, permissionCode string) (bool, error) {
 	userID, err := s.mustUserID(ctx)
 	if err != nil {
@@ -268,4 +547,52 @@ func (s *AdminService) mustUserID(ctx context.Context) (int64, error) {
 	}
 
 	return userID, nil
+}
+
+func (s *AdminService) writeAudit(ctx context.Context, event audit.Event) error {
+	if s.audit == nil {
+		return nil
+	}
+	actorUserID := event.ActorUserID
+	if actorUserID <= 0 {
+		actorUserID, _ = authpkg.UserIDFromContext(ctx)
+	}
+	detail, err := audit.MarshalDetail(event.Detail)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to serialize admin audit detail", "action", event.Action, "resource_type", event.ResourceType, "resource_id", event.ResourceID, "error", err)
+		return nil
+	}
+	if err := s.audit.Append(ctx, actorUserID, event.Action, event.ResourceType, event.ResourceID, detail); err != nil {
+		slog.WarnContext(ctx, "failed to append admin audit log", "action", event.Action, "resource_type", event.ResourceType, "resource_id", event.ResourceID, "error", err)
+	}
+	return nil
+}
+
+func validateIDs(ids []int64) error {
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return errors.New("id must be positive")
+		}
+		if _, ok := seen[id]; ok {
+			return errors.New("id must be unique")
+		}
+		seen[id] = struct{}{}
+	}
+
+	return nil
+}
+
+func validateRoleCode(code string) error {
+	if code == "" || len(code) > 64 || strings.ContainsAny(code, " \t\r\n") {
+		return errors.New("invalid role code")
+	}
+	return nil
+}
+
+func validatePassword(password string) error {
+	if len(password) < 6 || len(password) > 72 {
+		return errors.New("password length must be between 6 and 72")
+	}
+	return nil
 }

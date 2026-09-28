@@ -95,6 +95,11 @@ func GroupRolesByUser(items []model.AdminUserRole) map[int64][]types.RoleItem {
 func AdminUsers(items []model.AdminUser, rolesByUser map[int64][]types.RoleItem) []types.AdminUserItem {
 	users := make([]types.AdminUserItem, 0, len(items))
 	for _, item := range items {
+		roles := rolesByUser[item.ID]
+		if roles == nil {
+			roles = []types.RoleItem{}
+		}
+
 		users = append(users, types.AdminUserItem{
 			ID:          item.ID,
 			Username:    item.Username,
@@ -102,11 +107,26 @@ func AdminUsers(items []model.AdminUser, rolesByUser map[int64][]types.RoleItem)
 			IsSuper:     item.IsSuper == 1,
 			Status:      item.Status,
 			LastLoginAt: NullTimePtr(item.LastLoginAt),
-			Roles:       rolesByUser[item.ID],
+			Roles:       roles,
 		})
 	}
 
 	return users
+}
+
+func AdminUser(item *model.AdminUser, roles []types.RoleItem) *types.AdminUserItem {
+	if roles == nil {
+		roles = []types.RoleItem{}
+	}
+	return &types.AdminUserItem{
+		ID:          item.ID,
+		Username:    item.Username,
+		Nickname:    item.Nickname,
+		IsSuper:     item.IsSuper == 1,
+		Status:      item.Status,
+		LastLoginAt: NullTimePtr(item.LastLoginAt),
+		Roles:       roles,
+	}
 }
 
 func buildMenuTree(parentID int64, childrenByParent map[int64][]types.MenuItem) []types.MenuItem {

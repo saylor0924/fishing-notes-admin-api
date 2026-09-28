@@ -2,18 +2,19 @@ package repository
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"errors"
 	"time"
 
 	"fishing-notes-admin-api/internal/model"
 	"fishing-notes-admin-api/internal/permission"
 
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AdminRepository struct {
-	conn sqlx.SqlConn
+	db *gorm.DB
 }
 
 type AdminUserListFilter struct {
@@ -24,19 +25,34 @@ type AdminUserListFilter struct {
 	Limit    int64
 }
 
-func NewAdminRepository(conn sqlx.SqlConn) *AdminRepository {
-	return &AdminRepository{conn: conn}
+type adminUserRoleRepositoryModel struct {
+	UserID int64 `gorm:"column:user_id;primaryKey"`
+	RoleID int64 `gorm:"column:role_id;primaryKey"`
+}
+
+func (adminUserRoleRepositoryModel) TableName() string { return "admin_user_roles" }
+
+type adminRolePermissionRepositoryModel struct {
+	RoleID       int64 `gorm:"column:role_id;primaryKey"`
+	PermissionID int64 `gorm:"column:permission_id;primaryKey"`
+}
+
+func (adminRolePermissionRepositoryModel) TableName() string { return "admin_role_permissions" }
+
+func NewAdminRepository(db *gorm.DB) *AdminRepository {
+	return &AdminRepository{db: db}
 }
 
 func (r *AdminRepository) FindUserByUsername(ctx context.Context, username string) (*model.AdminUser, error) {
-	const query = `
-SELECT id, username, password_hash, nickname, status, is_super, last_login_at
-FROM admin_users
-WHERE username = ?
-LIMIT 1`
-
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
 	var user model.AdminUser
-	if err := r.conn.QueryRowCtx(ctx, &user, query, username); err != nil {
+	err := r.db.WithContext(ctx).Model(&model.AdminUser{}).Where("username = ?", username).Take(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, sqlx.ErrNotFound
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -44,14 +60,15 @@ LIMIT 1`
 }
 
 func (r *AdminRepository) FindUserByID(ctx context.Context, userID int64) (*model.AdminUser, error) {
-	const query = `
-SELECT id, username, password_hash, nickname, status, is_super, last_login_at
-FROM admin_users
-WHERE id = ?
-LIMIT 1`
-
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
 	var user model.AdminUser
-	if err := r.conn.QueryRowCtx(ctx, &user, query, userID); err != nil {
+	err := r.db.WithContext(ctx).Model(&model.AdminUser{}).Where("id = ?", userID).Take(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, sqlx.ErrNotFound
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -59,54 +76,247 @@ LIMIT 1`
 }
 
 func (r *AdminRepository) UpdateLastLoginAt(ctx context.Context, userID int64, loginAt time.Time) error {
-	const query = `UPDATE admin_users SET last_login_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-	_, err := r.conn.ExecCtx(ctx, query, loginAt, userID)
-	return err
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Model(&model.AdminUser{}).Where("id = ?", userID).Updates(map[string]any{
+		"last_login_at": loginAt, "updated_at": loginAt,
+	}).Error
+}
+
+func (r *AdminRepository) CreateAdminUser(ctx context.Context, username, passwordHash, nickname string, roleIDs []int64) (*model.AdminUser, error) {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	user := model.AdminUser{Username: username, PasswordHash: passwordHash, Nickname: nickname, Status: 1}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.AdminUser{}).Create(&user).Error; err != nil {
+			return err
+		}
+		links := make([]adminUserRoleRepositoryModel, len(roleIDs))
+		for index, roleID := range roleIDs {
+			links[index] = adminUserRoleRepositoryModel{UserID: user.ID, RoleID: roleID}
+		}
+		if len(links) == 0 {
+			return nil
+		}
+		return tx.Create(&links).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.FindUserByID(ctx, user.ID)
+}
+
+func (r *AdminRepository) UpdateAdminUser(ctx context.Context, userID int64, nickname string, status int64) error {
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Model(&model.AdminUser{}).Where("id = ?", userID).Updates(map[string]any{
+		"nickname": nickname, "status": status, "updated_at": time.Now(),
+	}).Error
+}
+
+func (r *AdminRepository) UpdateAdminPassword(ctx context.Context, userID int64, passwordHash string) error {
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Model(&model.AdminUser{}).Where("id = ?", userID).Updates(map[string]any{
+		"password_hash": passwordHash, "updated_at": time.Now(),
+	}).Error
 }
 
 func (r *AdminRepository) ListRolesByUserID(ctx context.Context, userID int64) ([]model.AdminRole, error) {
-	const query = `
-SELECT DISTINCT r.id, r.code, r.name, r.description, r.status, r.sort
-FROM admin_roles r
-INNER JOIN admin_user_roles ur ON ur.role_id = r.id
-WHERE ur.user_id = ? AND r.status = 1
-ORDER BY r.sort ASC, r.id ASC`
-
-	var roles []model.AdminRole
-	if err := r.conn.QueryRowsCtx(ctx, &roles, query, userID); err != nil {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	var links []adminUserRoleRepositoryModel
+	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&links).Error; err != nil {
 		return nil, err
 	}
-
+	roleIDs := make([]int64, 0, len(links))
+	for _, link := range links {
+		roleIDs = append(roleIDs, link.RoleID)
+	}
+	roles := make([]model.AdminRole, 0)
+	if len(roleIDs) == 0 {
+		return roles, nil
+	}
+	if err := r.db.WithContext(ctx).Model(&model.AdminRole{}).Where("id IN ? AND status = ?", roleIDs, 1).
+		Order("sort ASC").Order("id ASC").Find(&roles).Error; err != nil {
+		return nil, err
+	}
 	return roles, nil
 }
 
-func (r *AdminRepository) ListAllRoles(ctx context.Context) ([]model.AdminRole, error) {
-	const query = `
-SELECT id, code, name, description, status, sort
-FROM admin_roles
-WHERE status = 1
-ORDER BY sort ASC, id ASC`
-
-	var roles []model.AdminRole
-	if err := r.conn.QueryRowsCtx(ctx, &roles, query); err != nil {
+func (r *AdminRepository) FindRoleByID(ctx context.Context, roleID int64) (*model.AdminRole, error) {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	var role model.AdminRole
+	err := r.db.WithContext(ctx).Model(&model.AdminRole{}).Where("id = ?", roleID).Take(&role).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, sqlx.ErrNotFound
+	}
+	if err != nil {
 		return nil, err
 	}
 
+	return &role, nil
+}
+
+func (r *AdminRepository) FindRoleByCode(ctx context.Context, code string) (*model.AdminRole, error) {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	var role model.AdminRole
+	err := r.db.WithContext(ctx).Model(&model.AdminRole{}).Where("code = ?", code).Take(&role).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, sqlx.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &role, nil
+}
+
+func (r *AdminRepository) CreateRole(ctx context.Context, code, name, description string, status, sort int64, permissionIDs []int64) (*model.AdminRole, error) {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	role := model.AdminRole{Code: code, Name: name, Description: description, Status: status, Sort: sort}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.AdminRole{}).Create(&role).Error; err != nil {
+			return err
+		}
+		links := make([]adminRolePermissionRepositoryModel, len(permissionIDs))
+		for index, permissionID := range permissionIDs {
+			links[index] = adminRolePermissionRepositoryModel{RoleID: role.ID, PermissionID: permissionID}
+		}
+		if len(links) == 0 {
+			return nil
+		}
+		return tx.Create(&links).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.FindRoleByID(ctx, role.ID)
+}
+
+func (r *AdminRepository) UpdateRole(ctx context.Context, roleID int64, name, description string, status, sort int64) error {
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Model(&model.AdminRole{}).Where("id = ?", roleID).Updates(map[string]any{
+		"name": name, "description": description, "status": status, "sort": sort,
+	}).Error
+}
+
+func (r *AdminRepository) CountUsersByRoleID(ctx context.Context, roleID int64) (int64, error) {
+	if r.db == nil {
+		return 0, errors.New("GORM database is not configured")
+	}
+	var total int64
+	err := r.db.WithContext(ctx).Model(&adminUserRoleRepositoryModel{}).Where("role_id = ?", roleID).Count(&total).Error
+	return total, err
+}
+
+func (r *AdminRepository) DeleteRole(ctx context.Context, roleID int64) error {
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("role_id = ?", roleID).Delete(&adminRolePermissionRepositoryModel{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.AdminRole{}).Where("id = ?", roleID).Delete(&model.AdminRole{}).Error
+	})
+}
+
+func (r *AdminRepository) ReplaceUserRoles(ctx context.Context, userID int64, roleIDs []int64) error {
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&adminUserRoleRepositoryModel{}).Error; err != nil {
+			return err
+		}
+		links := make([]adminUserRoleRepositoryModel, len(roleIDs))
+		for index, roleID := range roleIDs {
+			links[index] = adminUserRoleRepositoryModel{UserID: userID, RoleID: roleID}
+		}
+		if len(links) == 0 {
+			return nil
+		}
+		return tx.Create(&links).Error
+	})
+}
+
+func (r *AdminRepository) ReplaceRolePermissions(ctx context.Context, roleID int64, permissionIDs []int64) error {
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("role_id = ?", roleID).Delete(&adminRolePermissionRepositoryModel{}).Error; err != nil {
+			return err
+		}
+		links := make([]adminRolePermissionRepositoryModel, len(permissionIDs))
+		for index, permissionID := range permissionIDs {
+			links[index] = adminRolePermissionRepositoryModel{RoleID: roleID, PermissionID: permissionID}
+		}
+		if len(links) == 0 {
+			return nil
+		}
+		return tx.Create(&links).Error
+	})
+}
+
+func (r *AdminRepository) CountActiveRoles(ctx context.Context, roleIDs []int64) (int64, error) {
+	if len(roleIDs) == 0 {
+		return 0, nil
+	}
+	if r.db == nil {
+		return 0, errors.New("GORM database is not configured")
+	}
+	var total int64
+	err := r.db.WithContext(ctx).Model(&model.AdminRole{}).Where("status = ? AND id IN ?", 1, roleIDs).Count(&total).Error
+	return total, err
+}
+
+func (r *AdminRepository) CountActivePermissions(ctx context.Context, permissionIDs []int64) (int64, error) {
+	if len(permissionIDs) == 0 {
+		return 0, nil
+	}
+
+	if r.db == nil {
+		return 0, errors.New("GORM database is not configured")
+	}
+	var total int64
+	err := r.db.WithContext(ctx).Model(&model.AdminPermission{}).Where("status = ? AND id IN ?", 1, permissionIDs).Count(&total).Error
+	return total, err
+}
+
+func (r *AdminRepository) ListAllRoles(ctx context.Context) ([]model.AdminRole, error) {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	roles := make([]model.AdminRole, 0)
+	if err := r.db.WithContext(ctx).Model(&model.AdminRole{}).Order("sort ASC").Order("id ASC").Find(&roles).Error; err != nil {
+		return nil, err
+	}
 	return roles, nil
 }
 
 func (r *AdminRepository) ListAllPermissions(ctx context.Context) ([]model.AdminPermission, error) {
-	const query = `
-SELECT id, parent_id, code, name, type, path, method, component, icon, description, status, sort
-FROM admin_permissions
-WHERE status = 1
-ORDER BY sort ASC, id ASC`
-
-	var permissions []model.AdminPermission
-	if err := r.conn.QueryRowsCtx(ctx, &permissions, query); err != nil {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	permissions := make([]model.AdminPermission, 0)
+	if err := r.db.WithContext(ctx).Model(&model.AdminPermission{}).Where("status = ?", 1).
+		Order("sort ASC").Order("id ASC").Find(&permissions).Error; err != nil {
 		return nil, err
 	}
-
 	return permissions, nil
 }
 
@@ -120,19 +330,36 @@ func (r *AdminRepository) ListPermissionsByUserID(ctx context.Context, userID in
 		return r.ListAllPermissions(ctx)
 	}
 
-	const query = `
-SELECT DISTINCT p.id, p.parent_id, p.code, p.name, p.type, p.path, p.method, p.component, p.icon, p.description, p.status, p.sort
-FROM admin_permissions p
-INNER JOIN admin_role_permissions rp ON rp.permission_id = p.id
-INNER JOIN admin_user_roles ur ON ur.role_id = rp.role_id
-WHERE ur.user_id = ? AND p.status = 1
-ORDER BY p.sort ASC, p.id ASC`
-
-	var permissions []model.AdminPermission
-	if err := r.conn.QueryRowsCtx(ctx, &permissions, query, userID); err != nil {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	var userLinks []adminUserRoleRepositoryModel
+	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&userLinks).Error; err != nil {
 		return nil, err
 	}
-
+	roleIDs := make([]int64, 0, len(userLinks))
+	for _, link := range userLinks {
+		roleIDs = append(roleIDs, link.RoleID)
+	}
+	if len(roleIDs) == 0 {
+		return []model.AdminPermission{}, nil
+	}
+	var roleLinks []adminRolePermissionRepositoryModel
+	if err := r.db.WithContext(ctx).Where("role_id IN ?", roleIDs).Find(&roleLinks).Error; err != nil {
+		return nil, err
+	}
+	permissionIDs := make([]int64, 0, len(roleLinks))
+	for _, link := range roleLinks {
+		permissionIDs = append(permissionIDs, link.PermissionID)
+	}
+	if len(permissionIDs) == 0 {
+		return []model.AdminPermission{}, nil
+	}
+	permissions := make([]model.AdminPermission, 0)
+	if err := r.db.WithContext(ctx).Model(&model.AdminPermission{}).Where("id IN ? AND status = ?", permissionIDs, 1).
+		Order("sort ASC").Order("id ASC").Find(&permissions).Error; err != nil {
+		return nil, err
+	}
 	return permissions, nil
 }
 
@@ -151,19 +378,63 @@ func (r *AdminRepository) ListPermissionCodesByUserID(ctx context.Context, userI
 }
 
 func (r *AdminRepository) ListRolePermissionPairs(ctx context.Context) ([]model.RolePermissionPair, error) {
-	const query = `
-SELECT rp.role_id, p.code AS permission_code
-FROM admin_role_permissions rp
-INNER JOIN admin_permissions p ON p.id = rp.permission_id
-WHERE p.status = 1
-ORDER BY rp.role_id ASC, p.sort ASC, p.id ASC`
-
-	var pairs []model.RolePermissionPair
-	if err := r.conn.QueryRowsCtx(ctx, &pairs, query); err != nil {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	var links []adminRolePermissionRepositoryModel
+	if err := r.db.WithContext(ctx).Find(&links).Error; err != nil {
 		return nil, err
 	}
-
+	permissionIDs := make([]int64, 0, len(links))
+	for _, link := range links {
+		permissionIDs = append(permissionIDs, link.PermissionID)
+	}
+	if len(permissionIDs) == 0 {
+		return []model.RolePermissionPair{}, nil
+	}
+	permissions := make([]model.AdminPermission, 0)
+	if err := r.db.WithContext(ctx).Model(&model.AdminPermission{}).Where("id IN ? AND status = ?", permissionIDs, 1).
+		Find(&permissions).Error; err != nil {
+		return nil, err
+	}
+	permissionByID := make(map[int64]model.AdminPermission, len(permissions))
+	for _, item := range permissions {
+		permissionByID[item.ID] = item
+	}
+	pairs := make([]model.RolePermissionPair, 0, len(links))
+	for _, link := range links {
+		if permission, ok := permissionByID[link.PermissionID]; ok {
+			pairs = append(pairs, model.RolePermissionPair{RoleID: link.RoleID, PermissionCode: permission.Code})
+		}
+	}
 	return pairs, nil
+}
+
+func (r *AdminRepository) ListPermissionCodesByRoleID(ctx context.Context, roleID int64) ([]string, error) {
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
+	}
+	var links []adminRolePermissionRepositoryModel
+	if err := r.db.WithContext(ctx).Where("role_id = ?", roleID).Find(&links).Error; err != nil {
+		return nil, err
+	}
+	permissionIDs := make([]int64, 0, len(links))
+	for _, link := range links {
+		permissionIDs = append(permissionIDs, link.PermissionID)
+	}
+	if len(permissionIDs) == 0 {
+		return []string{}, nil
+	}
+	permissions := make([]model.AdminPermission, 0)
+	if err := r.db.WithContext(ctx).Model(&model.AdminPermission{}).Where("id IN ? AND status = ?", permissionIDs, 1).
+		Order("sort ASC").Order("id ASC").Find(&permissions).Error; err != nil {
+		return nil, err
+	}
+	codes := make([]string, 0, len(permissions))
+	for _, permission := range permissions {
+		codes = append(codes, permission.Code)
+	}
+	return codes, nil
 }
 
 func (r *AdminRepository) HasPermission(ctx context.Context, userID int64, code string) (bool, error) {
@@ -180,43 +451,63 @@ func (r *AdminRepository) HasPermission(ctx context.Context, userID int64, code 
 		return true, nil
 	}
 
-	const query = `
-SELECT COUNT(1) AS total
-FROM admin_permissions p
-INNER JOIN admin_role_permissions rp ON rp.permission_id = p.id
-INNER JOIN admin_user_roles ur ON ur.role_id = rp.role_id
-WHERE ur.user_id = ? AND p.code = ? AND p.status = 1`
-
-	var total int64
-	if err := r.conn.QueryRowCtx(ctx, &total, query, userID, code); err != nil {
+	if r.db == nil {
+		return false, errors.New("GORM database is not configured")
+	}
+	var userLinks []adminUserRoleRepositoryModel
+	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&userLinks).Error; err != nil {
 		return false, err
 	}
-
+	roleIDs := make([]int64, 0, len(userLinks))
+	for _, link := range userLinks {
+		roleIDs = append(roleIDs, link.RoleID)
+	}
+	if len(roleIDs) == 0 {
+		return false, nil
+	}
+	var roleLinks []adminRolePermissionRepositoryModel
+	if err := r.db.WithContext(ctx).Where("role_id IN ?", roleIDs).Find(&roleLinks).Error; err != nil {
+		return false, err
+	}
+	permissionIDs := make([]int64, 0, len(roleLinks))
+	for _, link := range roleLinks {
+		permissionIDs = append(permissionIDs, link.PermissionID)
+	}
+	if len(permissionIDs) == 0 {
+		return false, nil
+	}
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&model.AdminPermission{}).Where("id IN ? AND code = ? AND status = ?", permissionIDs, code, 1).Count(&total).Error; err != nil {
+		return false, err
+	}
 	return total > 0, nil
 }
 
 func (r *AdminRepository) ListUsers(ctx context.Context, filter AdminUserListFilter) ([]model.AdminUser, int64, error) {
-	whereClause, args := buildAdminUserListWhere(filter)
-
-	countQuery := fmt.Sprintf("SELECT COUNT(1) FROM admin_users WHERE %s", whereClause)
+	if r.db == nil {
+		return nil, 0, errors.New("GORM database is not configured")
+	}
+	query := r.db.WithContext(ctx).Model(&model.AdminUser{})
+	if filter.Username != "" {
+		query = query.Where("username LIKE ?", "%"+filter.Username+"%")
+	}
+	if filter.Nickname != "" {
+		query = query.Where("nickname LIKE ?", "%"+filter.Nickname+"%")
+	}
+	if filter.Status != nil {
+		query = query.Where("status = ?", *filter.Status)
+	}
 	var total int64
-	if err := r.conn.QueryRowCtx(ctx, &total, countQuery, args...); err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-
-	queryArgs := append(append([]any{}, args...), filter.Limit, filter.Offset)
-	listQuery := fmt.Sprintf(`
-SELECT id, username, password_hash, nickname, status, is_super, last_login_at
-FROM admin_users
-WHERE %s
-ORDER BY id DESC
-LIMIT ? OFFSET ?`, whereClause)
-
-	var users []model.AdminUser
-	if err := r.conn.QueryRowsCtx(ctx, &users, listQuery, queryArgs...); err != nil {
+	if total == 0 {
+		return []model.AdminUser{}, 0, nil
+	}
+	users := make([]model.AdminUser, 0)
+	if err := query.Order("id DESC").Limit(int(filter.Limit)).Offset(int(filter.Offset)).Find(&users).Error; err != nil {
 		return nil, 0, err
 	}
-
 	return users, total, nil
 }
 
@@ -225,43 +516,56 @@ func (r *AdminRepository) ListRolesByUserIDs(ctx context.Context, userIDs []int6
 		return []model.AdminUserRole{}, nil
 	}
 
-	placeholders := make([]string, 0, len(userIDs))
-	args := make([]any, 0, len(userIDs))
-	for _, userID := range userIDs {
-		placeholders = append(placeholders, "?")
-		args = append(args, userID)
+	if r.db == nil {
+		return nil, errors.New("GORM database is not configured")
 	}
-
-	query := fmt.Sprintf(`
-SELECT ur.user_id, r.id AS role_id, r.code, r.name, r.description, r.status, r.sort
-FROM admin_user_roles ur
-INNER JOIN admin_roles r ON r.id = ur.role_id
-WHERE ur.user_id IN (%s) AND r.status = 1
-ORDER BY ur.user_id ASC, r.sort ASC, r.id ASC`, strings.Join(placeholders, ", "))
-
-	var rows []model.AdminUserRole
-	if err := r.conn.QueryRowsCtx(ctx, &rows, query, args...); err != nil {
+	var links []adminUserRoleRepositoryModel
+	if err := r.db.WithContext(ctx).Where("user_id IN ?", userIDs).Find(&links).Error; err != nil {
 		return nil, err
 	}
-
+	if len(links) == 0 {
+		return []model.AdminUserRole{}, nil
+	}
+	roleIDs := make([]int64, 0, len(links))
+	for _, link := range links {
+		roleIDs = append(roleIDs, link.RoleID)
+	}
+	roles := make([]model.AdminRole, 0)
+	if err := r.db.WithContext(ctx).Model(&model.AdminRole{}).Where("id IN ? AND status = ?", roleIDs, 1).Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	roleByID := make(map[int64]model.AdminRole, len(roles))
+	for _, role := range roles {
+		roleByID[role.ID] = role
+	}
+	rows := make([]model.AdminUserRole, 0, len(links))
+	for _, link := range links {
+		if role, ok := roleByID[link.RoleID]; ok {
+			rows = append(rows, model.AdminUserRole{
+				UserID: link.UserID, RoleID: role.ID, Code: role.Code, Name: role.Name,
+				Description: role.Description, Status: role.Status, Sort: role.Sort,
+			})
+		}
+	}
 	return rows, nil
 }
 
 func (r *AdminRepository) SyncBuiltinPermissions(ctx context.Context, defs []permission.Definition) error {
-	return r.conn.TransactCtx(ctx, func(ctx context.Context, session sqlx.Session) error {
-		conn := sqlx.NewSqlConnFromSession(session)
-
+	if r.db == nil {
+		return errors.New("GORM database is not configured")
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, def := range defs {
 			if def.ParentCode != "" {
 				continue
 			}
 
-			if err := upsertAdminPermission(ctx, conn, 0, def); err != nil {
+			if err := upsertAdminPermission(tx, 0, def); err != nil {
 				return err
 			}
 		}
 
-		idByCode, err := queryAdminPermissionIDs(ctx, conn)
+		idByCode, err := queryAdminPermissionIDs(tx)
 		if err != nil {
 			return err
 		}
@@ -284,17 +588,17 @@ func (r *AdminRepository) SyncBuiltinPermissions(ctx context.Context, defs []per
 					continue
 				}
 
-				if err := upsertAdminPermission(ctx, conn, parentID, def); err != nil {
+				if err := upsertAdminPermission(tx, parentID, def); err != nil {
 					return err
 				}
 				progress = true
 			}
 
 			if !progress {
-				return fmt.Errorf("failed to resolve admin permission parents")
+				return errors.New("failed to resolve admin permission parents")
 			}
 
-			idByCode, err = queryAdminPermissionIDs(ctx, conn)
+			idByCode, err = queryAdminPermissionIDs(tx)
 			if err != nil {
 				return err
 			}
@@ -305,33 +609,12 @@ func (r *AdminRepository) SyncBuiltinPermissions(ctx context.Context, defs []per
 	})
 }
 
-func buildAdminUserListWhere(filter AdminUserListFilter) (string, []any) {
-	conditions := []string{"1 = 1"}
-	args := make([]any, 0, 3)
-
-	if filter.Username != "" {
-		conditions = append(conditions, "username LIKE ?")
-		args = append(args, "%"+filter.Username+"%")
+func queryAdminPermissionIDs(tx *gorm.DB) (map[string]int64, error) {
+	var items []struct {
+		ID   int64  `gorm:"column:id"`
+		Code string `gorm:"column:code"`
 	}
-
-	if filter.Nickname != "" {
-		conditions = append(conditions, "nickname LIKE ?")
-		args = append(args, "%"+filter.Nickname+"%")
-	}
-
-	if filter.Status != nil {
-		conditions = append(conditions, "status = ?")
-		args = append(args, *filter.Status)
-	}
-
-	return strings.Join(conditions, " AND "), args
-}
-
-func queryAdminPermissionIDs(ctx context.Context, conn sqlx.SqlConn) (map[string]int64, error) {
-	const query = `SELECT id, code FROM admin_permissions`
-
-	var items []model.AdminPermissionIDItem
-	if err := conn.QueryRowsCtx(ctx, &items, query); err != nil {
+	if err := tx.Model(&model.AdminPermission{}).Select("id", "code").Find(&items).Error; err != nil {
 		return nil, err
 	}
 
@@ -343,37 +626,16 @@ func queryAdminPermissionIDs(ctx context.Context, conn sqlx.SqlConn) (map[string
 	return idByCode, nil
 }
 
-func upsertAdminPermission(ctx context.Context, conn sqlx.SqlConn, parentID int64, def permission.Definition) error {
-	const query = `
-INSERT INTO admin_permissions (parent_id, code, name, type, path, method, component, icon, description, status, sort)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE
-	parent_id = VALUES(parent_id),
-	name = VALUES(name),
-	type = VALUES(type),
-	path = VALUES(path),
-	method = VALUES(method),
-	component = VALUES(component),
-	icon = VALUES(icon),
-	description = VALUES(description),
-	status = VALUES(status),
-	sort = VALUES(sort),
-	updated_at = CURRENT_TIMESTAMP`
-
-	_, err := conn.ExecCtx(
-		ctx,
-		query,
-		parentID,
-		def.Code,
-		def.Name,
-		def.Type,
-		def.Path,
-		def.Method,
-		def.Component,
-		def.Icon,
-		def.Description,
-		def.Status,
-		def.Sort,
-	)
-	return err
+func upsertAdminPermission(tx *gorm.DB, parentID int64, def permission.Definition) error {
+	item := model.AdminPermission{
+		ParentID: parentID, Code: def.Code, Name: def.Name, Type: def.Type, Path: def.Path,
+		Method: def.Method, Component: def.Component, Icon: def.Icon, Description: def.Description,
+		Status: def.Status, Sort: def.Sort,
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "code"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"parent_id", "name", "type", "path", "method", "component", "icon", "description", "status", "sort",
+		}),
+	}).Create(&item).Error
 }
