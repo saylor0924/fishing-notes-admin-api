@@ -37,6 +37,15 @@ type adminRolePermissionRepositoryModel struct {
 	PermissionID int64 `gorm:"column:permission_id;primaryKey"`
 }
 
+// AutoMigrate 创建管理端自有表，复用业务查询 model 作为 GORM schema 定义。
+func AutoMigrate(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&model.AdminUser{}, &model.AdminRole{}, &model.AdminPermission{},
+		&adminUserRoleRepositoryModel{}, &adminRolePermissionRepositoryModel{},
+		&adminAuditLogModel{},
+	)
+}
+
 func (adminRolePermissionRepositoryModel) TableName() string { return "admin_role_permissions" }
 
 func NewAdminRepository(db *gorm.DB) *AdminRepository {

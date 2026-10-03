@@ -8,6 +8,7 @@ import "github.com/zeromicro/go-zero/rest"
 type DatabaseConf struct {
 	Driver      string
 	DSN         string
+	AutoMigrate bool
 	MaxOpenConn int
 	MaxIdleConn int
 }

@@ -45,6 +45,11 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	if err != nil {
 		panic(fmt.Errorf("failed to initialize GORM repositories: %w", err))
 	}
+	if c.Database.AutoMigrate {
+		if err := repository.AutoMigrate(gormDB); err != nil {
+			panic(fmt.Errorf("failed to auto-migrate admin schema: %w", err))
+		}
+	}
 
 	adminRepo := repository.NewAdminRepository(gormDB)
 	businessRepo := repository.NewBusinessRepository(gormDB)
